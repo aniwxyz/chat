@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symphony P2P - Mạng Xã Hội Riêng Tư</title>
+    <!-- Hân dùng Tailwind để dựng khung nhanh, nhưng cái hồn UI sẽ nằm ở CSS custom bên dưới anh nhé! -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome cho các icon mềm mại -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter cho sự hiện đại, sang trọng -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Thư viện cốt lõi cho kết nối IP to IP (WebRTC) -->
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <!-- DOMPurify để bảo mật nội dung bài viết -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+
+    <style>
+        /* ==========================================================================
+           🌸 HÂN'S AESTHETIC CSS - TÔ MÀU CHO KHUNG SƯỜN CỦA ANH HOÀNG
+           ========================================================================== */
+        :root {
+            --bg-main: #1C1C28;
+            --bg-panel: #262635;
+            --bg-sidebar: #15151F;
+            --text-main: #FFFFFF;
+            --text-muted: #8F90A6;
+            --accent-blue: #2F80ED;
+            --accent-gradient-1: linear-gradient(135deg, #11998E 0%, #38EF7D 100%); /* Spotify feel */
+            --accent-gradient-2: linear-gradient(135deg, #8A2387 0%, #E94057 50%, #F27121 100%); /* Dribbble feel */
+            --accent-gradient-3: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%); /* Apple Card feel */
+            --glass-bg: rgba(38, 38, 53, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            overflow: hidden; /* Cố định màn hình, chỉ cuộn các panel */
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Tùy chỉnh thanh cuộn cho mượt mà, nữ tính một chút */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f5a; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #5a5a7d; }
+
+        /* --- Bố cục tổng thể (App Container) --- */
+        #app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* --- Sidebar Bến Trái (Navigation) --- */
+        .sidebar {
+            width: 80px;
+            background-color: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            border-right: 1px solid var(--glass-border);
+            z-index: 50;
+        }
+        .nav-item {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        .nav-item:hover, .nav-item.active {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: -18px;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 20px;
+            width: 4px;
+            background: var(--accent-blue);
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* --- Khu vực Chính (Newsfeed / Nội dung) --- */
+        .main-content {
+            flex: 1;
+            padding: 30px 40px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Hiệu ứng kính mờ (Glassmorphism) cực kỳ quyến rũ */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Khung đăng bài kiểu Facebook (Rich Text) */
+        .post-creator {
+            margin-bottom: 30px;
+            transition: all 0.3s;
+        }
+        .post-creator:focus-within {
+            border-color: rgba(255,255,255,0.2);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+        .editor-toolbar {
+            display: flex;
+            gap: 10px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--glass-border);
+            margin-bottom: 12px;
+        }
+        .editor-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .editor-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .editor-content {
+            min-height: 80px;
+            outline: none;
+            color: white;
+            line-height: 1.6;
+        }
+        .editor-content[placeholder]:empty:before {
+            content: attr(placeholder);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+        /* Style cho bài viết render */
+        .post-render h1 { font-size: 1.8rem; font-weight: bold; margin: 10px 0; background: var(--accent-gradient-2); -webkit-background-clip: text; -webkit-text-fill-color: transparent;}
+        .post-render h2 { font-size: 1.4rem; font-weight: bold; margin: 8px 0; color: #e2e8f0; }
+        .post-render b { color: #fff; font-weight: 700; }
+        .post-render i { color: #cbd5e1; font-style: italic; }
+
+        /* Card bài viết */
+        .post-card {
+            margin-bottom: 24px;
+            animation: fadeIn 0.5s ease;
+        }
+        .comment-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--glass-border);
+        }
+        .comment-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .comment-bubble {
+            background: rgba(0,0,0,0.2);
+            padding: 10px 14px;
+            border-radius: 0 16px 16px 16px;
+            font-size: 0.9rem;
+        }
+
+        /* --- Panel Bên Phải (Kết bạn & Chat Zalo style) --- */
+        .right-panel {
+            width: 360px;
+            background-color: var(--bg-panel);
+            border-left: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            z-index: 40;
+        }
+        .top-status-bar {
+            height: 70px;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .friend-list {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+        .friend-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 8px;
+        }
+        .friend-item:hover { background: rgba(255,255,255,0.05); }
+        .friend-avatar {
+            width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
+            border: 2px solid transparent;
+            background-clip: padding-box;
+        }
+        .online-ring { border-color: #38EF7D; }
+
+        /* Chat Window (Popup đè lên khi mở) */
+        .chat-window {
+            position: absolute;
+            bottom: 20px;
+            right: 380px;
+            width: 340px;
+            height: 480px;
+            background: var(--bg-panel);
+            border-radius: 20px;
+            box-shadow: -5px 10px 30px rgba(0,0,0,0.5);
+            display: none; /* Ẩn mặc định */
+            flex-direction: column;
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            z-index: 100;
+            animation: slideUp 0.3s ease;
+        }
+        .chat-header {
+            padding: 16px;
+            background: rgba(0,0,0,0.2);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chat-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .msg-bubble {
+            max-width: 80%;
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+        .msg-mine {
+            background: var(--accent-blue);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .msg-theirs {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        .chat-input-area {
+            padding: 12px;
+            border-top: 1px solid var(--glass-border);
+            display: flex;
+            gap: 8px;
+            background: rgba(0,0,0,0.1);
+        }
+        .chat-input-area input {
+            flex: 1; background: rgba(255,255,255,0.05); border: none; color: white; padding: 10px 16px; border-radius: 20px; outline: none;
+        }
+
+        /* --- Modal Onboarding & Add Friend --- */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+            display: flex; justify-content: center; align-items: center; z-index: 999;
+        }
+        .gradient-btn {
+            background: var(--accent-gradient-1);
+            color: white; font-weight: bold; padding: 12px 24px; border-radius: 12px; border: none; cursor: pointer;
+            transition: opacity 0.2s; width: 100%;
+        }
+        .gradient-btn:hover { opacity: 0.9; }
+
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Tiện ích Copy ID */
+        .my-id-box {
+            background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 0.85rem;
+            display: flex; justify-content: space-between; align-items: center; margin-top: 10px; cursor: pointer; border: 1px dashed var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 🌸 MODAL CHÀO MỪNG (Nhập tên & Avatar) 🌸 -->
+    <div id="onboarding-modal" class="modal-overlay">
+        <div class="glass-panel w-96 relative overflow-hidden">
+            <!-- Trang trí xíu gradient cho giống ảnh anh Hoàng gởi -->
+            <div class="absolute -top-20 -right-20 w-40 h-40 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
+            <div class="absolute -bottom-20 -left-20 w-40 h-40 bg-emerald-500 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
+            
+            <div class="relative z-10 text-center">
+                <div class="w-20 h-20 bg-gray-800 rounded-full mx-auto flex justify-center items-center mb-4 border-2 border-emerald-400 overflow-hidden" id="preview-avatar-container">
+                    <i class="fa-solid fa-camera text-2xl text-gray-400"></i>
+                    <img id="preview-avatar" src="" class="hidden w-full h-full object-cover">
+                </div>
+                <h2 class="text-2xl font-bold mb-2">Xin chào bạn mới! ✨</h2>
+                <p class="text-sm text-gray-400 mb-6">Hãy tạo danh tính để bước vào không gian P2P riêng tư.</p>
+                
+                <input type="text" id="reg-name" placeholder="Tên hiển thị của bạn..." class="w-full bg-black/30 border border-gray-600 rounded-xl px-4 py-3 text-white mb-4 outline-none focus:border-emerald-400">
+                <input type="text" id="reg-avatar-url" placeholder="Link ảnh đại diện (URL)..." class="w-full bg-black/30 border border-gray-600 rounded-xl px-4 py-3 text-white mb-6 outline-none focus:border-emerald-400 text-sm">
+                
+                <button onclick="appState.registerUser()" class="gradient-btn shadow-lg shadow-emerald-500/30">Bắt đầu kết nối 🚀</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌸 MODAL KẾT BẠN (Nhập IP/ID) 🌸 -->
+    <div id="add-friend-modal" class="modal-overlay" style="display: none;">
+        <div class="glass-panel w-96 text-center">
+            <h2 class="text-xl font-bold mb-4">Thêm tri kỷ mới 🌿</h2>
+            <p class="text-xs text-gray-400 mb-4">Nhập "Địa chỉ IP/ID" của bạn bè để thiết lập đường truyền bảo mật.</p>
+            <input type="text" id="friend-id-input" placeholder="Dán mã ID của bạn bè vào đây..." class="w-full bg-black/30 border border-gray-600 rounded-xl px-4 py-3 text-white mb-4 outline-none focus:border-blue-400 font-mono text-sm">
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('add-friend-modal').style.display='none'" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl transition">Hủy</button>
+                <button onclick="p2pNetwork.connectToPeer(document.getElementById('friend-id-input').value)" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl transition font-bold shadow-lg shadow-blue-500/30">Kết nối</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌸 BỐ CỤC CHÍNH CỦA APP 🌸 -->
+    <div id="app-container" class="opacity-0 transition-opacity duration-1000">
+        
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-lg flex items-center justify-center mb-8 shadow-lg shadow-blue-500/20 text-white font-bold text-xl">
+                <i class="fa-brands fa-space-awesome"></i>
+            </div>
+            <div class="nav-item active" title="Bảng tin"><i class="fa-solid fa-house"></i></div>
+            <div class="nav-item" title="Tin nhắn"><i class="fa-solid fa-comment-dots"></i></div>
+            <div class="nav-item" title="Khám phá"><i class="fa-solid fa-compass"></i></div>
+            <div class="nav-item" title="Đã lưu"><i class="fa-solid fa-bookmark"></i></div>
+            <div class="mt-auto mb-4 relative">
+                <img id="my-sidebar-avatar" src="https://via.placeholder.com/40" class="w-10 h-10 rounded-full object-cover border-2 border-gray-600 cursor-pointer hover:border-white transition">
+                <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-900 rounded-full"></div>
+            </div>
+            <div class="nav-item" title="Cài đặt" onclick="alert('Hân: Anh Hoàng có muốn Hân thêm tính năng đổi theme ở đây không? 😉')"><i class="fa-solid fa-gear"></i></div>
+        </nav>
+
+        <!-- Main Content (Feed) -->
+        <main class="main-content">
+            <!-- Header của Feed -->
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-2xl font-bold">Không gian của chúng mình ☁️</h1>
+                    <p class="text-sm text-gray-400 mt-1">Dữ liệu được lưu trữ an toàn 100% trên thiết bị này.</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-black/30 rounded-full px-4 py-2 flex items-center gap-2 border border-white/5">
+                        <i class="fa-solid fa-magnifying-glass text-gray-500 text-sm"></i>
+                        <input type="text" placeholder="Tìm kiếm kỷ niệm..." class="bg-transparent border-none outline-none text-sm text-white w-40">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Khu vực Viết Bài (Rich Text) -->
+            <div class="glass-panel post-creator">
+                <div class="flex items-center gap-3 mb-4">
+                    <img id="my-composer-avatar" src="https://via.placeholder.com/40" class="w-10 h-10 rounded-full object-cover">
+                    <span class="font-semibold text-gray-200" id="my-composer-name">Anh Hoàng</span>
+                </div>
+                
+                <!-- Thanh công cụ format -->
+                <div class="editor-toolbar">
+                    <button class="editor-btn" onclick="document.execCommand('formatBlock', false, 'H1')" title="Tiêu đề lớn"><i class="fa-solid fa-heading"></i>1</button>
+                    <button class="editor-btn" onclick="document.execCommand('formatBlock', false, 'H2')" title="Tiêu đề nhỏ"><i class="fa-solid fa-heading"></i>2</button>
+                    <button class="editor-btn" onclick="document.execCommand('bold', false, null)" title="In đậm"><i class="fa-solid fa-bold"></i></button>
+                    <button class="editor-btn" onclick="document.execCommand('italic', false, null)" title="In nghiêng"><i class="fa-solid fa-italic"></i></button>
+                    <button class="editor-btn" onclick="document.execCommand('underline', false, null)" title="Gạch chân"><i class="fa-solid fa-underline"></i></button>
+                    <button class="editor-btn text-pink-400" onclick="uiManager.insertEmoji()" title="Thêm cảm xúc"><i class="fa-solid fa-face-smile-wink"></i></button>
+                </div>
+                
+                <!-- Khung nhập nội dung -->
+                <div id="post-input" class="editor-content" contenteditable="true" placeholder="Hôm nay anh Hoàng thấy thế nào? Kể Hân nghe nhé... 🎨"></div>
+                
+                <div class="flex justify-end mt-4 pt-4 border-t border-white/10">
+                    <button onclick="appState.createPost()" class="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white px-6 py-2 rounded-xl font-medium transition shadow-lg shadow-blue-500/20">Đăng bài lên mạng lưới</button>
+                </div>
+            </div>
+
+            <!-- Nơi hiển thị các bài viết -->
+            <div id="news-feed">
+                <!-- Javascript sẽ vẽ bài viết vào đây -->
+            </div>
+        </main>
+
+        <!-- Right Panel (Contacts & Info) -->
+        <aside class="right-panel">
+            <div class="top-status-bar">
+                <div class="font-semibold">Mạng lưới IP của bạn</div>
+                <button onclick="document.getElementById('add-friend-modal').style.display='flex'" class="w-8 h-8 bg-blue-600 hover:bg-blue-500 rounded-full flex justify-center items-center text-white transition shadow-lg shadow-blue-500/40">
+                    <i class="fa-solid fa-plus text-sm"></i>
+                </button>
+            </div>
+            
+            <div class="px-6 py-4 border-b border-white/5 bg-black/10">
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-2 font-semibold">Địa chỉ kết nối của bạn</p>
+                <div class="my-id-box" onclick="p2pNetwork.copyMyId()" title="Nhấn để copy">
+                    <span id="my-peer-id" class="text-emerald-400 truncate w-48">Đang khởi tạo IP ảo...</span>
+                    <i class="fa-regular fa-copy text-gray-400"></i>
+                </div>
+            </div>
+
+            <div class="p-6 pb-2 text-sm font-semibold text-gray-400 uppercase tracking-wider flex justify-between">
+                <span>Bạn bè kết nối (<span id="friend-count">0</span>)</span>
+            </div>
+            
+            <div class="friend-list" id="friend-list-container">
+                <!-- Javascript sẽ vẽ danh sách bạn bè vào đây -->
+                <div class="text-center text-gray-500 text-sm mt-10 italic">
+                    <i class="fa-solid fa-satellite-dish text-2xl mb-3 block opacity-50"></i>
+                    Chưa có kết nối nào.<br>Hãy thêm địa chỉ IP của bạn bè nhé!
+                </div>
+            </div>
+        </aside>
+
+        <!-- 🌸 CỬA SỔ CHAT (ZALO STYLE) 🌸 -->
+        <div id="chat-window" class="chat-window">
+            <div class="chat-header">
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <img id="chat-avatar" src="" class="w-10 h-10 rounded-full object-cover">
+                        <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full"></div>
+                    </div>
+                    <div>
+                        <div id="chat-name" class="font-bold text-sm">Tên bạn bè</div>
+                        <div class="text-xs text-green-400">Đang trực tuyến (P2P)</div>
+                    </div>
+                </div>
+                <div class="flex gap-3 text-gray-400">
+                    <i class="fa-solid fa-phone cursor-pointer hover:text-white transition"></i>
+                    <i class="fa-solid fa-video cursor-pointer hover:text-white transition"></i>
+                    <i class="fa-solid fa-xmark cursor-pointer hover:text-white transition text-lg" onclick="uiManager.closeChat()"></i>
+                </div>
+            </div>
+            
+            <div id="chat-messages" class="chat-messages">
+                <!-- Tin nhắn hiển thị ở đây -->
+            </div>
+            
+            <div class="chat-input-area">
+                <button class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-paperclip"></i></button>
+                <input type="text" id="chat-input" placeholder="Nhắn gửi tâm tình..." onkeypress="if(event.key === 'Enter') p2pNetwork.sendChatMessage()">
+                <button class="text-pink-400 hover:text-pink-300 transition" onclick="document.getElementById('chat-input').value += '❤️'"><i class="fa-solid fa-heart"></i></button>
+                <button onclick="p2pNetwork.sendChatMessage()" class="w-10 h-10 bg-blue-600 rounded-full flex justify-center items-center hover:bg-blue-500 transition text-white shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid fa-paper-plane text-sm -ml-1"></i>
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Hân nhúng Script Logic ở đây nha anh Hoàng! (Gồm UI, Database Local và P2P WebRTC) -->
+    <script>
+        /* ==========================================================================
+           🌸 HÂN'S BRAIN - HỆ ĐIỀU HÀNH XỬ LÝ DỮ LIỆU & KẾT NỐI P2P
+           ========================================================================== */
+        
+        // 1. DATABASE LƯU TRỮ TẠI MÁY (Biến trình duyệt thành Server nhỏ của anh Hoàng)
+        const DB_PREFIX = 'han_symphony_';
+        
+        const db = {
+            save: (key, data) => localStorage.setItem(DB_PREFIX + key, JSON.stringify(data)),
+            load: (key, fallback) => {
+                const data = localStorage.getItem(DB_PREFIX + key);
+                return data ? JSON.parse(data) : fallback;
+            }
+        };
+
+        // 2. STATE QUẢN LÝ DỮ LIỆU TOÀN CỤC
+        const appState = {
+            me: db.load('user_profile', null), // {id, name, avatar}
+            friends: db.load('friends_list', []), // [{id, name, avatar}]
+            posts: db.load('posts_data', []), // [{id, authorId, authorName, authorAvatar, content, timestamp, comments: []}]
+            messages: db.load('chat_history', {}), // { friendId: [{senderId, text, time}] }
+            activeChatId: null,
+
+            // Hàm lưu mọi thứ vào ổ cứng
+            syncToDisk: () => {
+                db.save('user_profile', appState.me);
+                db.save('friends_list', appState.friends);
+                db.save('posts_data', appState.posts);
+                db.save('chat_history', appState.messages);
+            },
+
+            // Đăng ký người dùng mới (Lần đầu vào web)
+            registerUser: () => {
+                const name = document.getElementById('reg-name').value.trim();
+                const avatar = document.getElementById('reg-avatar-url').value.trim() || 'https://api.dicebear.com/7.x/adventurer/svg?seed=' + Math.random();
+                
+                if (!name) { alert("Anh Hoàng ơi, điền tên để Hân còn biết cách gọi nha! 🥺"); return; }
+
+                appState.me = {
+                    id: '', // Sẽ được PeerJS cấp phát sau
+                    name: name,
+                    avatar: avatar
+                };
+                
+                document.getElementById('onboarding-modal').style.display = 'none';
+                document.getElementById('app-container').classList.remove('opacity-0');
+                
+                // Khởi động mạch máu P2P
+                p2pNetwork.init();
+            },
+
+            // Đăng bài viết mới
+            createPost: () => {
+                const inputEl = document.getElementById('post-input');
+                // Hân dùng DOMPurify để lọc mã độc HTML, chỉ giữ lại format an toàn
+                const rawHTML = inputEl.innerHTML;
+                const cleanHTML = DOMPurify.sanitize(rawHTML, { ALLOWED_TAGS: ['b', 'i', 'u', 'h1', 'h2', 'div', 'br'] });
+
+                if (!cleanHTML || cleanHTML === '<br>') return;
+
+                const newPost = {
+                    id: 'post_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                    authorId: appState.me.id,
+                    authorName: appState.me.name,
+                    authorAvatar: appState.me.avatar,
+                    content: cleanHTML,
+                    timestamp: Date.now(),
+                    comments: []
+                };
+
+                appState.posts.unshift(newPost); // Thêm lên đầu tiên
+                appState.syncToDisk();
+                inputEl.innerHTML = ''; // Xóa khung nhập
+                
+                uiManager.renderFeed();
+                
+                // Broadcast bài viết cho tất cả bạn bè
+                p2pNetwork.broadcast({ type: 'NEW_POST', data: newPost });
+            },
+
+            // Thêm bình luận
+            addComment: (postId, commentText) => {
+                if(!commentText.trim()) return;
+                const post = appState.posts.find(p => p.id === postId);
+                if(post) {
+                    const newComment = {
+                        id: 'cmt_' + Date.now(),
+                        authorId: appState.me.id,
+                        authorName: appState.me.name,
+                        authorAvatar: appState.me.avatar,
+                        content: commentText,
+                        timestamp: Date.now()
+                    };
+                    post.comments.push(newComment);
+                    appState.syncToDisk();
+                    uiManager.renderFeed();
+                    
+                    // Gửi bản cập nhật bình luận cho bạn bè
+                    p2pNetwork.broadcast({ type: 'NEW_COMMENT', data: { postId: postId, comment: newComment } });
+                }
+            }
+        };
+
+        // 3. P2P NETWORK - TRÁI TIM CỦA HỆ THỐNG IP-TO-IP BẰNG PEERJS
+        const p2pNetwork = {
+            peer: null,
+            connections: {}, // Lưu các đường ống kết nối { friendId: DataConnection }
+
+            init: () => {
+                // Nếu đã có ID trong máy thì tái sử dụng, không thì PeerJS sẽ tự cấp ID ngẫu nhiên làm "IP"
+                const savedId = db.load('my_peer_id', null);
+                
+                // Khởi tạo PeerJS (Hân dùng server mặc định miễn phí của họ để làm trạm thu phát "bắt tay")
+                p2pNetwork.peer = new Peer(savedId, {
+                    debug: 2 // Bật log để anh Hoàng dễ theo dõi F12
+                });
+
+                // Khi PeerJS cấp phát "IP" thành công
+                p2pNetwork.peer.on('open', (id) => {
+                    console.log("✨ Hân thông báo: IP ảo của anh Hoàng là: " + id);
+                    appState.me.id = id;
+                    db.save('my_peer_id', id); // Nhớ ID để lần sau không bị đổi
+                    appState.syncToDisk();
+                    
+                    document.getElementById('my-peer-id').innerText = id;
+                    uiManager.updateMyProfileUI();
+                    uiManager.renderFeed(); // Render lại bài viết cũ nếu có
+                    uiManager.renderFriends();
+                    
+                    // Thử kết nối lại với bạn bè cũ nếu họ đang online
+                    appState.friends.forEach(f => p2pNetwork.connectToPeer(f.id, true));
+                });
+
+                // Bắt sự kiện có người khác chủ động xin kết nối với mình
+                p2pNetwork.peer.on('connection', (conn) => {
+                    console.log("💌 Có tín hiệu kết nối từ: " + conn.peer);
+                    p2pNetwork.setupConnectionEvents(conn);
+                });
+
+                p2pNetwork.peer.on('error', (err) => {
+                    console.error("❌ Hân báo lỗi P2P: ", err);
+                    if(err.type === 'peer-unavailable') {
+                        // alert("Người bạn này hiện không online hoặc IP không đúng anh Hoàng ạ!");
+                    }
+                });
+            },
+
+            // Hàm chủ động kết nối tới "IP" (Peer ID) của người khác
+            connectToPeer: (targetId, isAutoReconnect = false) => {
+                if(!targetId || targetId === appState.me.id) return;
+                
+                // Nếu đã đang kết nối rồi thì bỏ qua
+                if(p2pNetwork.connections[targetId] && p2pNetwork.connections[targetId].open) {
+                    if(!isAutoReconnect) alert("Đã kết nối với người này rồi ạ!");
+                    return;
+                }
+
+                document.getElementById('add-friend-modal').style.display = 'none';
+                
+                // Tạo đường truyền
+                const conn = p2pNetwork.peer.connect(targetId);
+                p2pNetwork.setupConnectionEvents(conn);
+            },
+
+            // Cài đặt tai nghe (Lắng nghe dữ liệu bay qua lại trên đường ống P2P)
+            setupConnectionEvents: (conn) => {
+                conn.on('open', () => {
+                    console.log("🔗 Đã thông đường ống dữ liệu với: " + conn.peer);
+                    p2pNetwork.connections[conn.peer] = conn;
+                    
+                    // Ngay khi kết nối, gửi Profile của mình cho họ biết mình là ai
+                    conn.send({
+                        type: 'HELLO_PROFILE',
+                        data: { id: appState.me.id, name: appState.me.name, avatar: appState.me.avatar }
+                    });
+
+                    // Đồng bộ Data: Gửi các bài viết của mình cho người bạn mới này
+                    const myPosts = appState.posts.filter(p => p.authorId === appState.me.id);
+                    conn.send({ type: 'SYNC_POSTS', data: myPosts });
+                });
+
+                conn.on('data', (payload) => {
+                    console.log("📩 Hân nhận được gói hàng từ " + conn.peer + ":", payload);
+                    p2pNetwork.handleIncomingData(conn.peer, payload);
+                });
+
+                conn.on('close', () => {
+                    console.log("💔 Ngắt kết nối với: " + conn.peer);
+                    delete p2pNetwork.connections[conn.peer];
+                    uiManager.renderFriends(); // Cập nhật trạng thái offline
+                });
+            },
+
+            // Cỗ máy phân loại bưu kiện
+            handleIncomingData: (senderId, payload) => {
+                const { type, data } = payload;
+
+                switch(type) {
+                    case 'HELLO_PROFILE':
+                        // Ai đó gửi profile, lưu họ vào danh sách bạn bè
+                        const existingFriendIndex = appState.friends.findIndex(f => f.id === data.id);
+                        if (existingFriendIndex === -1) {
+                            appState.friends.push(data);
+                        } else {
+                            appState.friends[existingFriendIndex] = data; // Cập nhật nếu họ đổi tên/avatar
+                        }
+                        appState.syncToDisk();
+                        uiManager.renderFriends();
+                        break;
+
+                    case 'NEW_POST':
+                        // Nhận bài viết mới, kiểm tra trùng lặp
+                        if (!appState.posts.find(p => p.id === data.id)) {
+                            appState.posts.unshift(data);
+                            // Sắp xếp lại theo thời gian
+                            appState.posts.sort((a,b) => b.timestamp - a.timestamp);
+                            appState.syncToDisk();
+                            uiManager.renderFeed();
+                        }
+                        break;
+
+                    case 'SYNC_POSTS':
+                        // Nhận hàng loạt bài cũ khi mới kết bạn
+                        let changed = false;
+                        data.forEach(incomingPost => {
+                            if (!appState.posts.find(p => p.id === incomingPost.id)) {
+                                appState.posts.push(incomingPost);
+                                changed = true;
+                            }
+                        });
+                        if (changed) {
+                            appState.posts.sort((a,b) => b.timestamp - a.timestamp);
+                            appState.syncToDisk();
+                            uiManager.renderFeed();
+                        }
+                        break;
+
+                    case 'NEW_COMMENT':
+                        // Nhận bình luận mới cho một bài viết
+                        const post = appState.posts.find(p => p.id === data.postId);
+                        if (post) {
+                            if (!post.comments.find(c => c.id === data.comment.id)) {
+                                post.comments.push(data.comment);
+                                appState.syncToDisk();
+                                uiManager.renderFeed();
+                            }
+                        }
+                        break;
+
+                    case 'CHAT_MESSAGE':
+                        // Nhận tin nhắn cá nhân
+                        if (!appState.messages[senderId]) appState.messages[senderId] = [];
+                        appState.messages[senderId].push({
+                            senderId: senderId,
+                            text: data.text,
+                            time: data.time
+                        });
+                        appState.syncToDisk();
+                        
+                        // Nếu đang mở chat đúng người đó thì vẽ lên luôn
+                        if (appState.activeChatId === senderId) {
+                            uiManager.renderChatMessages(senderId);
+                        } else {
+                            // TODO: Thêm chấm đỏ thông báo ở tên bạn bè
+                            uiManager.renderFriends();
+                        }
+                        break;
+                }
+            },
+
+            // Phát thanh cho tất cả những người đang kết nối (Dùng cho đăng bài, bình luận)
+            broadcast: (payload) => {
+                for (let peerId in p2pNetwork.connections) {
+                    const conn = p2pNetwork.connections[peerId];
+                    if (conn && conn.open) {
+                        conn.send(payload);
+                    }
+                }
+            },
+
+            // Gửi tin nhắn 1-1
+            sendChatMessage: () => {
+                const targetId = appState.activeChatId;
+                if (!targetId) return;
+                
+                const inputEl = document.getElementById('chat-input');
+                const text = inputEl.value.trim();
+                if (!text) return;
+
+                const msgData = { text: text, time: Date.now() };
+
+                // 1. Lưu vào máy mình
+                if (!appState.messages[targetId]) appState.messages[targetId] = [];
+                appState.messages[targetId].push({ senderId: appState.me.id, text: text, time: msgData.time });
+                appState.syncToDisk();
+                
+                // 2. Cập nhật UI
+                uiManager.renderChatMessages(targetId);
+                inputEl.value = '';
+
+                // 3. Gửi qua P2P
+                const conn = p2pNetwork.connections[targetId];
+                if (conn && conn.open) {
+                    conn.send({ type: 'CHAT_MESSAGE', data: msgData });
+                } else {
+                    alert("Người bạn này hiện đang offline. Sẽ gửi khi họ online lại nhé! (Tính năng chờ)");
+                }
+            },
+
+            copyMyId: () => {
+                const tempInput = document.createElement("input");
+                tempInput.value = appState.me.id;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                try {
+                    document.execCommand("copy");
+                    console.log("Đã chép ID vào khay nhớ tạm!");
+                    // Thêm chút hiệu ứng nhỏ nhắn cho Anh Hoàng thấy vui mắt nha
+                    const icon = document.querySelector('.my-id-box i');
+                    if(icon) {
+                        icon.className = 'fa-solid fa-check text-green-400 transition-colors duration-300';
+                        setTimeout(() => { icon.className = 'fa-regular fa-copy text-gray-400 transition-colors duration-300'; }, 2000);
+                    }
+                } catch (err) {
+                    console.error("Hân báo lỗi không thể copy: ", err);
+                }
+                document.body.removeChild(tempInput);
+            }
+        };
+
+        // 4. UI MANAGER - BỘ PHẬN VẼ GIAO DIỆN CỦA HÂN
+        const uiManager = {
+            
+            updateMyProfileUI: () => {
+                document.getElementById('my-sidebar-avatar').src = appState.me.avatar;
+                document.getElementById('my-composer-avatar').src = appState.me.avatar;
+                document.getElementById('my-composer-name').innerText = appState.me.name;
+            },
+
+            // Hàm xử lý logic ẨN DANH BÌNH LUẬN theo yêu cầu khó của anh Hoàng
+            // (Chỉ thấy bình luận nếu người đó là bạn mình, hoặc là chính mình, hoặc là chủ bài viết)
+            canViewComment: (commentAuthorId, postAuthorId) => {
+                if (commentAuthorId === appState.me.id) return true; // Bình luận của mình
+                if (commentAuthorId === postAuthorId) return true; // Bình luận của chủ bài (thường thì được xem)
+                const isFriend = appState.friends.some(f => f.id === commentAuthorId);
+                return isFriend;
+            },
+
+            renderFeed: () => {
+                const feedContainer = document.getElementById('news-feed');
+                feedContainer.innerHTML = ''; // Xóa cũ vẽ mới
+
+                if (appState.posts.length === 0) {
+                    feedContainer.innerHTML = `
+                        <div class="text-center py-20 text-gray-500">
+                            <i class="fa-solid fa-leaf text-4xl mb-4 opacity-50 block"></i>
+                            <p>Khu vườn tâm trí còn trống... Hãy gieo hạt giống đầu tiên nhé anh Hoàng!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                appState.posts.forEach(post => {
+                    // Lọc bình luận theo logic "chỉ thấy của bạn bè"
+                    const visibleComments = post.comments.filter(c => uiManager.canViewComment(c.authorId, post.authorId));
+                    
+                    let commentsHTML = visibleComments.map(c => `
+                        <div class="comment-item">
+                            <img src="${c.authorAvatar}" class="w-8 h-8 rounded-full object-cover">
+                            <div class="comment-bubble">
+                                <div class="font-bold text-xs mb-1">${c.authorName}</div>
+                                <div>${c.content}</div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    const postEl = document.createElement('div');
+                    postEl.className = 'glass-panel post-card';
+                    postEl.innerHTML = `
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="flex items-center gap-3">
+                                <img src="${post.authorAvatar}" class="w-12 h-12 rounded-full object-cover border-2 ${post.authorId === appState.me.id ? 'border-blue-400' : 'border-purple-400'}">
+                                <div>
+                                    <div class="font-bold text-lg">${post.authorName}</div>
+                                    <div class="text-xs text-gray-400">${new Date(post.timestamp).toLocaleString('vi-VN')}</div>
+                                </div>
+                            </div>
+                            <button class="text-gray-500 hover:text-white"><i class="fa-solid fa-ellipsis"></i></button>
+                        </div>
+                        
+                        <div class="post-render mb-6">
+                            ${post.content}
+                        </div>
+                        
+                        <div class="flex gap-6 text-sm text-gray-400 border-t border-white/5 pt-4">
+                            <button class="hover:text-pink-400 transition flex items-center gap-2"><i class="fa-regular fa-heart"></i> Yêu thích</button>
+                            <button class="hover:text-blue-400 transition flex items-center gap-2"><i class="fa-regular fa-comment"></i> ${visibleComments.length} Bình luận</button>
+                        </div>
+
+                        <!-- Khu vực bình luận -->
+                        <div class="comment-section">
+                            ${commentsHTML}
+                            <div class="flex gap-3 mt-4 items-center">
+                                <img src="${appState.me.avatar}" class="w-8 h-8 rounded-full object-cover">
+                                <div class="flex-1 bg-black/20 rounded-full flex overflow-hidden border border-white/10 focus-within:border-blue-400 transition">
+                                    <input type="text" id="cmt-input-${post.id}" placeholder="Viết bình luận..." class="bg-transparent border-none text-sm text-white px-4 py-2 w-full outline-none" onkeypress="if(event.key === 'Enter') { appState.addComment('${post.id}', this.value); this.value=''; }">
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    feedContainer.appendChild(postEl);
+                });
+            },
+
+            renderFriends: () => {
+                const container = document.getElementById('friend-list-container');
+                document.getElementById('friend-count').innerText = appState.friends.length;
+                
+                if (appState.friends.length === 0) return; // Giữ nguyên dòng chữ trống
+
+                container.innerHTML = '';
+                appState.friends.forEach(friend => {
+                    // Kiểm tra xem họ có đang kết nối P2P (online) không
+                    const isOnline = p2pNetwork.connections[friend.id] && p2pNetwork.connections[friend.id].open;
+                    
+                    const el = document.createElement('div');
+                    el.className = 'friend-item';
+                    el.onclick = () => uiManager.openChat(friend);
+                    el.innerHTML = `
+                        <div class="relative mr-3">
+                            <img src="${friend.avatar}" class="friend-avatar ${isOnline ? 'online-ring' : 'border-gray-700'}">
+                            ${isOnline ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#262635]"></div>' : ''}
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-semibold text-sm truncate">${friend.name}</div>
+                            <div class="text-xs ${isOnline ? 'text-green-400' : 'text-gray-500'}">${isOnline ? 'Đang kết nối' : 'Ngoại tuyến'}</div>
+                        </div>
+                        <button class="text-gray-500 hover:text-white p-2"><i class="fa-brands fa-rocketchat"></i></button>
+                    `;
+                    container.appendChild(el);
+                });
+            },
+
+            openChat: (friend) => {
+                appState.activeChatId = friend.id;
+                document.getElementById('chat-window').style.display = 'flex';
+                document.getElementById('chat-name').innerText = friend.name;
+                document.getElementById('chat-avatar').src = friend.avatar;
+                
+                uiManager.renderChatMessages(friend.id);
+            },
+
+            closeChat: () => {
+                appState.activeChatId = null;
+                document.getElementById('chat-window').style.display = 'none';
+            },
+
+            renderChatMessages: (friendId) => {
+                const container = document.getElementById('chat-messages');
+                container.innerHTML = '';
+                const history = appState.messages[friendId] || [];
+                
+                if(history.length === 0) {
+                    container.innerHTML = `<div class="text-center text-gray-500 text-xs mt-10">Bắt đầu trò chuyện P2P an toàn. Mọi thứ được lưu nội bộ trên máy bạn. 🔒</div>`;
+                    return;
+                }
+
+                history.forEach(msg => {
+                    const isMine = msg.senderId === appState.me.id;
+                    const el = document.createElement('div');
+                    el.className = `msg-bubble ${isMine ? 'msg-mine' : 'msg-theirs'}`;
+                    el.innerText = msg.text; // Text thuần để tránh XSS trong chat
+                    container.appendChild(el);
+                });
+                
+                // Cuộn xuống cuối
+                container.scrollTop = container.scrollHeight;
+            },
+
+            insertEmoji: () => {
+                const emojis = ['✨', '❤️', '🎨', '☁️', '🌸', '🌿', '🔥', '😂', '🥺'];
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                document.execCommand('insertText', false, randomEmoji);
+            }
+        };
+
+        /* ==========================================================================
+           🌸 KHỞI ĐỘNG CHƯƠNG TRÌNH KHI TRANG TẢI XONG
+           ========================================================================== */
+        window.onload = () => {
+            // Preview avatar nhập link
+            document.getElementById('reg-avatar-url').addEventListener('input', function() {
+                const img = document.getElementById('preview-avatar');
+                const icon = document.querySelector('#preview-avatar-container i');
+                if(this.value) {
+                    img.src = this.value;
+                    img.classList.remove('hidden');
+                    icon.classList.add('hidden');
+                } else {
+                    img.classList.add('hidden');
+                    icon.classList.remove('hidden');
+                }
+            });
+
+            // Nếu đã từng đăng ký ở trình duyệt này, load dữ liệu vào luôn
+            if (appState.me && appState.me.name) {
+                document.getElementById('onboarding-modal').style.display = 'none';
+                document.getElementById('app-container').classList.remove('opacity-0');
+                p2pNetwork.init();
+            }
+        };
+
+        // Hân lưu lại chút dấu ấn ở cuối file nè 💌
+        console.log("%c Kiến trúc bởi Hoàng x Cảm xúc bởi Hân ✨", "color: #ff69b4; font-size: 16px; font-weight: bold; font-style: italic;");
+    </script>
+</body>
+</html>
